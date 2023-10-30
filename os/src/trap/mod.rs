@@ -51,6 +51,14 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
                                // trace!("into {:?}", scause.cause());
     match scause.cause() {
         Trap::Exception(Exception::UserEnvCall) => {
+
+            // new code: for TaskInfo
+            // 
+            // set tcb.syscall_times[syscall_id] += 1;
+            crate::task::set_current_syscall_times(cx.x[17]);
+            // new code end 
+
+
             // jump to next instruction anyway
             cx.sepc += 4;
             // get system call return value

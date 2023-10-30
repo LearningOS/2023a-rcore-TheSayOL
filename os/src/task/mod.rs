@@ -17,6 +17,7 @@ mod task;
 use crate::config::MAX_APP_NUM;
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -54,6 +55,12 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+
+            // new code: for TaskInfo  
+            syscall_times: [0; crate::config::MAX_SYSCALL_NUM], 
+            first_start_time: 0,
+            // new code end 
+
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -125,6 +132,13 @@ impl TaskManager {
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
+
+            // new code : record next app's start time if started for the first time 
+            if inner.tasks[next].first_start_time == 0 {
+                inner.tasks[next].first_start_time = get_time_ms();
+            }
+            // new code end 
+
             drop(inner);
             // before this, we should drop local variables that must be dropped manually
             unsafe {
@@ -168,4 +182,35 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+/// return current task's status, and it's always `RUNNING` 
+pub fn get_current_status() -> TaskStatus {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let current_id = inner.current_task;
+    inner.tasks[current_id].task_status
+}
+
+
+/// set current task's syscall_times\[index\] ++ 
+pub fn set_current_syscall_times(index: usize) {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let current_id = inner.current_task;
+    if index < crate::config::MAX_SYSCALL_NUM {
+        inner.tasks[current_id].syscall_times[index] += 1;
+    }
+}
+
+/// return current task's syscall_times 
+pub fn get_current_syscall_times() -> [u32; 500] {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let current_id = inner.current_task;
+    inner.tasks[current_id].syscall_times
+}
+
+/// return current task's first start time
+pub fn get_current_first_start_time() -> usize {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let current_id = inner.current_task;
+    inner.tasks[current_id].first_start_time
 }
