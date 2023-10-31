@@ -56,10 +56,10 @@ lazy_static! {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
 
-            // new code: for TaskInfo  
-            syscall_times: [0; crate::config::MAX_SYSCALL_NUM], 
+            // new code: for TaskInfo
+            syscall_times: [0; crate::config::MAX_SYSCALL_NUM],
             first_start_time: 0,
-            // new code end 
+            // new code end
 
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
@@ -133,11 +133,11 @@ impl TaskManager {
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
 
-            // new code : record next app's start time if started for the first time 
+            // new code : record next app's start time if started for the first time
             if inner.tasks[next].first_start_time == 0 {
                 inner.tasks[next].first_start_time = get_time_ms();
             }
-            // new code end 
+            // new code end
 
             drop(inner);
             // before this, we should drop local variables that must be dropped manually
@@ -184,15 +184,14 @@ pub fn exit_current_and_run_next() {
     run_next_task();
 }
 
-/// return current task's status, and it's always `RUNNING` 
+/// return current task's status, and it's always `RUNNING`
 pub fn get_current_status() -> TaskStatus {
     let inner = TASK_MANAGER.inner.exclusive_access();
     let current_id = inner.current_task;
     inner.tasks[current_id].task_status
 }
 
-
-/// set current task's syscall_times\[index\] ++ 
+/// set current task's syscall_times\[index\] ++
 pub fn set_current_syscall_times(index: usize) {
     let mut inner = TASK_MANAGER.inner.exclusive_access();
     let current_id = inner.current_task;
@@ -201,7 +200,7 @@ pub fn set_current_syscall_times(index: usize) {
     }
 }
 
-/// return current task's syscall_times 
+/// return current task's syscall_times
 pub fn get_current_syscall_times() -> [u32; 500] {
     let inner = TASK_MANAGER.inner.exclusive_access();
     let current_id = inner.current_task;
