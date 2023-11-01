@@ -14,11 +14,14 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use crate::config::MAX_SYSCALL_NUM;
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
 use lazy_static::*;
+
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 
@@ -143,6 +146,13 @@ impl TaskManager {
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
+
+            // first start
+            if inner.tasks[next].first_start_time == 0 {
+                inner.tasks[next].first_start_time = get_time_ms();
+            }
+            // end
+
             drop(inner);
             // before this, we should drop local variables that must be dropped manually
             unsafe {
@@ -201,4 +211,35 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// get current taskinfo: syscall_times, first_start_times
+pub fn current_taskinfo() -> ([u32; MAX_SYSCALL_NUM], usize) {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    let syscall_times = inner.tasks[cur].syscall_times;
+    let fst = inner.tasks[cur].first_start_time;
+    (syscall_times, fst)
+}
+
+/// add one
+pub fn syscall_plus_one(index: usize) -> isize {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    inner.tasks[cur].syscall_times[index] += 1;
+    1
+}
+
+/// current insert memory area
+pub fn current_insert_area(start_va: crate::mm::VirtAddr, end_va: crate::mm::VirtAddr, permission: crate::mm::MapPermission) {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    inner.tasks[cur].memory_set.insert_framed_area(start_va, end_va, permission);
+}
+
+/// current shrink
+pub fn current_shrink_area(start: crate::mm::VirtAddr, new_start: crate::mm::VirtAddr) {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    inner.tasks[cur].memory_set.shrink_from(start, new_start);
 }
