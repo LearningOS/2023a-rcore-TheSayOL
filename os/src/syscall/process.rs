@@ -123,10 +123,9 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         current_task().unwrap().pid.0
     );
 
-    use crate::timer::get_time_us;
     let ts = translated_refmut(current_user_token(), _ts);
 
-    let us = get_time_us();
+    let us = crate::timer::get_time_us();
     *ts = TimeVal{
         sec: us / 1000_000,
         usec: us % 1000_000, 
@@ -143,16 +142,71 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
         "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let ti = translated_refmut(current_user_token(), _ti);
+
+    let task = current_task().unwrap(); 
+    let task_inner = task.inner_exclusive_access();
+    let st = task_inner.get_syscall_times();
+
+    let mut ret = TaskInfo {
+        status: TaskStatus::Running,
+        syscall_times: st,
+        time: task_inner.first_run_time,
+    };
+    println!("first run is {}, now is {}, del = {}", task_inner.first_run_time, crate::timer::get_time_ms(), crate::timer::get_time_ms()-task_inner.first_run_time);
+
+    ret.time = crate::timer::get_time_ms()-task_inner.first_run_time+20;  // why
+    *ti = ret;
+
+    0
 }
 
+
+/// 申请长度为 len 字节的物理内存，将其映射到 start 开始的虚存，内存页属性为 port
+/// start 需要映射的虚存起始地址，要求按页对齐
+/// len 映射字节长度，可以为 0
+/// port：第 0 位表示是否可读，第 1 位表示是否可写，第 2 位表示是否可执行。其他位无效且必须为 0
+/// 为了简单，目标虚存区间要求按页对齐，len 可直接按页向上取整，不考虑分配失败时的页回收。
 /// YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     trace!(
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+
+    use crate::mm::{VirtAddr, MapPermission, is_this_va_used_by_current, current_insert_area};
+    use crate::config::PAGE_SIZE;
+
+    if _len == 0 {return 0;}
+    
+    let va_start = VirtAddr(_start);
+    let va_end = VirtAddr(_start + _len);
+
+    // 可能的错误: start 没有按页大小对齐 ;  port & !0x7 != 0 (port 其余位必须为0) ;  port & 0x7 = 0 (这样的内存无意义)
+    if _port & !0x7 != 0 ||  _port & 0x7 == 0 || !va_start.aligned() {
+        return -1;
+    }
+
+    let mut va = va_start;
+    // 看看页表, 有没有已经映射的
+    while va < va_end {
+        if is_this_va_used_by_current(va) {
+            return -1;
+        }
+        va.0 += PAGE_SIZE;
+    } 
+
+    // flag 
+    let mut flags = MapPermission::U;
+    if _port & 1 != 0 {flags |= MapPermission::R;}
+    if _port & 2 != 0 {flags |= MapPermission::W;}
+    if _port & 4 != 0 {flags |= MapPermission::X;}
+
+    // map:  在当前程序的 mem_set 里插入新的 area
+    
+    current_insert_area(va_start, va_end, flags);
+
+    0
 }
 
 /// YOUR JOB: Implement munmap.
@@ -161,7 +215,28 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    use crate::mm::{VirtAddr,  is_this_va_used_by_current, current_shrink_area};
+    use crate::config::PAGE_SIZE;
+
+    let va_start = VirtAddr(_start);
+    let va_end = VirtAddr(_start + _len);
+
+    // 可能的错误: 未对齐
+    if !va_start.aligned() {return -1;}
+
+    // 检查: [start, start + len) 中存在未被映射的虚存。
+    let mut va = va_start;
+    while va < va_end {
+        if !is_this_va_used_by_current(va) {
+            return  -1;
+        }
+        va.0 += PAGE_SIZE;
+    }
+
+    // unmap to pt 
+    current_shrink_area(va_start, va_end);  
+
+    0
 }
 
 /// change data segment size

@@ -68,6 +68,12 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// syscall times
+    pub syscall_times: [u32;crate::config::MAX_SYSCALL_NUM],
+
+    /// first run time
+    pub first_run_time: usize,
 }
 
 impl TaskControlBlockInner {
@@ -84,6 +90,9 @@ impl TaskControlBlockInner {
     }
     pub fn is_zombie(&self) -> bool {
         self.get_status() == TaskStatus::Zombie
+    }
+    pub fn get_syscall_times(&self) -> [u32;crate::config::MAX_SYSCALL_NUM] {
+        self.syscall_times
     }
 }
 
@@ -118,6 +127,13 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+
+
+                    syscall_times: [0;crate::config::MAX_SYSCALL_NUM],
+                    first_run_time: 0,
+
+
+
                 })
             },
         };
@@ -191,6 +207,13 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+
+
+                    syscall_times:[0;crate::config::MAX_SYSCALL_NUM],
+                    first_run_time:0,
+
+
+
                 })
             },
         });
