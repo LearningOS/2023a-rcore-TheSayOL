@@ -122,7 +122,17 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+
+    use crate::timer::get_time_us;
+    let ts = translated_refmut(current_user_token(), _ts);
+
+    let us = get_time_us();
+    *ts = TimeVal{
+        sec: us / 1000_000,
+        usec: us % 1000_000, 
+    };
+
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
