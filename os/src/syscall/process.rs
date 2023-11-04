@@ -1,5 +1,5 @@
 //! Process management syscalls
-use alloc::sync::Arc;
+use alloc::sync::{Arc};
 
 use crate::{
     config::MAX_SYSCALL_NUM,
@@ -251,15 +251,44 @@ pub fn sys_sbrk(size: i32) -> isize {
 
 /// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
+/// 功能：新建子进程，使其执行目标程序。
+/// 说明：成功返回子进程id，否则返回 -1。
+/// 可能的错误：无效的文件名。进程池满/内存不足等资源错误。
+#[allow(unused)]
 pub fn sys_spawn(_path: *const u8) -> isize {
     trace!(
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    use crate::task;
+
+    // get app data
+    let path = translated_str(current_user_token(), _path);
+    let app_data = get_app_data_by_name(path.as_str());
+        
+    if app_data.is_none() {return -1;}  // 可能的错误: 无效的文件名。
+    let data = app_data.unwrap();
+
+    // 创建 tcb
+    let task = task::TaskControlBlock::new(data);
+
+    // 父子关系
+    let current_task = current_task().unwrap();
+    task.inner_exclusive_access().parent = Some(Arc::downgrade(&current_task));
+    let task_arc = Arc::new(task);
+    current_task.inner_exclusive_access().children.push(task_arc.clone());
+
+    // 加入队列
+    add_task(task_arc.clone());
+    
+    task_arc.as_ref().getpid() as isize
 }
 
 // YOUR JOB: Set task priority.
+// 设置当前进程优先级为 prio
+// 参数：prio 进程优先级，要求 prio >= 2
+// 返回值：如果输入合法则返回 prio，否则返回 -1
+/// 
 pub fn sys_set_priority(_prio: isize) -> isize {
     trace!(
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",

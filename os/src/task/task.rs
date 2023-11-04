@@ -127,13 +127,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
-
-
                     syscall_times: [0;crate::config::MAX_SYSCALL_NUM],
                     first_run_time: 0,
-
-
-
                 })
             },
         };
