@@ -61,12 +61,11 @@ pub fn run_tasks() {
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
-            // release coming task_inner manually
 
             // it is not the correct schedule time??? late for about 20 ms? why?
             if task_inner.first_run_time == 0 { task_inner.first_run_time = crate::timer::get_time_ms(); }
 
-
+            // release coming task_inner manually
             drop(task_inner);
             // release coming task TCB manually
             processor.current = Some(task);

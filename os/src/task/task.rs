@@ -74,6 +74,15 @@ pub struct TaskControlBlockInner {
 
     /// first run time
     pub first_run_time: usize,
+
+    /// prio
+    pub prio: usize,
+
+    /// stride 
+    pub stride: usize,
+
+    /// pass 
+    pub pass: usize
 }
 
 impl TaskControlBlockInner {
@@ -129,6 +138,9 @@ impl TaskControlBlock {
                     program_brk: user_sp,
                     syscall_times: [0;crate::config::MAX_SYSCALL_NUM],
                     first_run_time: 0,
+                    prio: crate::config::INIT_PRIO,
+                    stride: 0,
+                    pass: crate::config::BIG_STRIDE / crate::config::INIT_PRIO,
                 })
             },
         };
@@ -202,13 +214,11 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
-
-
                     syscall_times:[0;crate::config::MAX_SYSCALL_NUM],
                     first_run_time:0,
-
-
-
+                    prio: crate::config::INIT_PRIO,
+                    stride: 0,
+                    pass: crate::config::BIG_STRIDE / crate::config::INIT_PRIO,
                 })
             },
         });

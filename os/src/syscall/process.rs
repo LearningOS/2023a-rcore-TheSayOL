@@ -1,5 +1,5 @@
 //! Process management syscalls
-use alloc::sync::{Arc};
+use alloc::sync::Arc;
 
 use crate::{
     config::MAX_SYSCALL_NUM,
@@ -288,11 +288,16 @@ pub fn sys_spawn(_path: *const u8) -> isize {
 // 设置当前进程优先级为 prio
 // 参数：prio 进程优先级，要求 prio >= 2
 // 返回值：如果输入合法则返回 prio，否则返回 -1
-/// 
+/// 进程初始优先级为 16
 pub fn sys_set_priority(_prio: isize) -> isize {
     trace!(
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _prio < 2 {return -1;}
+    let prio = _prio as usize;
+    current_task().unwrap().inner_exclusive_access().prio = prio;
+    current_task().unwrap().inner_exclusive_access().pass = crate::config::BIG_STRIDE / prio;
+
+    _prio
 }
