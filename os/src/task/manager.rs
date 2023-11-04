@@ -38,24 +38,22 @@ impl TaskManager {
         let mut ret: Arc<TaskControlBlock> = self.ready_queue[index].clone();
         let mut min_stride = crate::config::BIG_STRIDE;
 
-        
         for i in 0..self.ready_queue.len()  {
             let tcb = &self.ready_queue[i];
             let stride = tcb.inner_exclusive_access().stride;
             
             // - 若 stride == min_stride: 步长一样, 判断优先级高者(数值大), 成为新的 min_stride
-            if stride - min_stride == 0 && tcb.inner_exclusive_access().prio > ret.inner_exclusive_access().prio {
+            if stride == min_stride && tcb.inner_exclusive_access().prio > ret.inner_exclusive_access().prio {
                 ret = tcb.clone(); 
                 index = i;
             }
             // - 若 stride - min_stride > 最大步长: stride 小, 成为新的 min
-            else if stride - min_stride > crate::config::BIG_STRIDE-max_pass+1 {
+            else if stride.overflowing_sub(min_stride).0 > max_pass {
                 min_stride = stride;
                 ret = tcb.clone();
                 index = i;
             } 
         }
-
         // -------- 从准备队列里, 找到 stride 最小的 tcb -----------
 
         // 将这个 tcb 出队
@@ -86,3 +84,7 @@ pub fn fetch_task() -> Option<Arc<TaskControlBlock>> {
     //trace!("kernel: TaskManager::fetch_task");
     TASK_MANAGER.exclusive_access().fetch()
 }
+
+
+
+
