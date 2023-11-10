@@ -63,6 +63,7 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     // take from Processor
     let task = take_current_task().unwrap();
 
+
     let pid = task.getpid();
     if pid == IDLE_PID {
         println!(

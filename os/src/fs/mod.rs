@@ -1,5 +1,7 @@
 //! File trait & inode(dir, file, pipe, stdin, stdout)
 
+extern crate log;
+
 mod inode;
 mod stdio;
 

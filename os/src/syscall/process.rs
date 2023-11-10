@@ -1,5 +1,6 @@
 //! Process management syscalls
-//!
+
+
 use alloc::sync::Arc;
 
 use crate::{
@@ -240,7 +241,7 @@ pub fn sys_spawn(_path: *const u8) -> isize {
     let data = (*app_inode_arc).read_all();
 
     // 创建 tcb
-    let task = task::TaskControlBlock::new(&data);
+    let task = task::TaskControlBlock::new(data.as_slice());
 
     // 父子关系
     let current_task = current_task().unwrap();
