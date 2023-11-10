@@ -49,12 +49,11 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     let fake_user_pt = PageTable::from_token(current_user_token());
     let ppn = fake_user_pt.translate(user_va.floor()).unwrap().ppn();
     let pa = (ppn.0 << 12) + user_va.page_offset();
+    let pa = pa as *mut TimeVal;
     let us = get_time_us();
     unsafe {
-        *(pa as *mut TimeVal) = TimeVal{
-            sec: us / 1000_000,
-            usec: us % 1000_000, 
-        }; 
+        (*pa).sec = us/1000_000;
+        (*pa).usec = us%1000_000;
     }
     
     0
@@ -74,13 +73,10 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
     let pa = (ppn.0 << 12) + user_va.page_offset();
     let pa = pa as *mut TaskInfo;
 
-
     unsafe { 
-        *pa = TaskInfo {
-            status: TaskStatus::Running,
-            syscall_times, 
-            time: get_time_ms(),   // should be  `get_time_ms() - first_start_time`, but can't pass, idk why
-        };  
+        (*pa).status = TaskStatus::Running;
+        (*pa).syscall_times = syscall_times;
+        (*pa).time = get_time_ms() - first_start_time;
     }
     0
 }
