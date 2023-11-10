@@ -9,7 +9,7 @@ use crate::{
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, TaskStatus,
-    },
+    }, timer::{get_time_us},
 };
 
 #[repr(C)]
@@ -122,7 +122,10 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let tv = translated_refmut(current_user_token(), _ts);
+    tv.sec = get_time_us() / 1000_000;
+    tv.usec = get_time_us() % 1000_000;
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
@@ -133,7 +136,7 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
         "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    0
 }
 
 /// YOUR JOB: Implement mmap.
@@ -142,7 +145,39 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    
+
+    use crate::mm::{VirtAddr, MapPermission, is_this_va_used_by_current, current_insert_area};
+    use crate::config::PAGE_SIZE;
+
+    if _len == 0 {return 0;}
+    
+    let va_start = VirtAddr(_start);
+    let va_end = VirtAddr(_start + _len);
+
+    // 可能的错误: start 没有按页大小对齐 ;  port & !0x7 != 0 (port 其余位必须为0) ;  port & 0x7 = 0 (这样的内存无意义)
+    if _port & !0x7 != 0 ||  _port & 0x7 == 0 || !va_start.aligned() {
+        return -1;
+    }
+
+    let mut va = va_start;
+    // 看看页表, 有没有已经映射的
+    while va < va_end {
+        if is_this_va_used_by_current(va) {
+            return -1;
+        }
+        va.0 += PAGE_SIZE;
+    } 
+
+    // flag 
+    let mut flags = MapPermission::U;
+    if _port & 1 != 0 {flags |= MapPermission::R;}
+    if _port & 2 != 0 {flags |= MapPermission::W;}
+    if _port & 4 != 0 {flags |= MapPermission::X;}
+
+    current_insert_area(va_start, va_end, flags);
+
+    0
 }
 
 /// YOUR JOB: Implement munmap.
@@ -151,7 +186,29 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+
+    use crate::mm::{VirtAddr,  is_this_va_used_by_current, current_shrink_area};
+    use crate::config::PAGE_SIZE;
+
+    let va_start = VirtAddr(_start);
+    let va_end = VirtAddr(_start + _len);
+
+    // 可能的错误: 未对齐
+    if !va_start.aligned() {return -1;}
+
+    // 检查: [start, start + len) 中存在未被映射的虚存。
+    let mut va = va_start;
+    while va < va_end {
+        if !is_this_va_used_by_current(va) {
+            return  -1;
+        }
+        va.0 += PAGE_SIZE;
+    }
+
+    // unmap to pt 
+    current_shrink_area(va_start, va_end);  
+
+    0
 }
 
 /// change data segment size
@@ -171,7 +228,30 @@ pub fn sys_spawn(_path: *const u8) -> isize {
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+
+    use crate::task;
+
+    // get app data
+    let path = translated_str(current_user_token(), _path);
+    let app_inode = open_file(path.as_str(), OpenFlags::RDONLY);
+        
+    if app_inode.is_none() {return -1;}  // 可能的错误: 无效的文件名。
+    let app_inode_arc = app_inode.unwrap();
+    let data = (*app_inode_arc).read_all();
+
+    // 创建 tcb
+    let task = task::TaskControlBlock::new(&data);
+
+    // 父子关系
+    let current_task = current_task().unwrap();
+    task.inner_exclusive_access().parent = Some(Arc::downgrade(&current_task));
+    let task_arc = Arc::new(task);
+    current_task.inner_exclusive_access().children.push(task_arc.clone());
+
+    // 加入队列
+    add_task(task_arc.clone());
+    
+    task_arc.as_ref().getpid() as isize
 }
 
 // YOUR JOB: Set task priority.
@@ -180,5 +260,11 @@ pub fn sys_set_priority(_prio: isize) -> isize {
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+
+    if _prio < 2 {return -1;}
+    let prio = _prio as usize;
+    current_task().unwrap().inner_exclusive_access().prio = prio;
+    current_task().unwrap().inner_exclusive_access().pass = crate::config::BIG_STRIDE / prio;
+
+    _prio
 }
