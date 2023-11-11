@@ -86,8 +86,10 @@ pub struct TaskControlBlockInner {
     pub stride: usize,
 
     /// pass 
-    pub pass: usize
+    pub pass: usize,
 
+    /// ftable
+    pub ftable: Vec<alloc::string::String>,
 
 }
 
@@ -158,6 +160,7 @@ impl TaskControlBlock {
                     prio:crate::config::INIT_PRIO,
                     stride: 0,
                     pass:  crate::config::BIG_STRIDE / crate::config::INIT_PRIO,
+                    ftable: Vec::new(),
                 })
             },
         };
@@ -245,6 +248,8 @@ impl TaskControlBlock {
                     prio: crate::config::INIT_PRIO,
                     stride: 0,
                     pass: crate::config::BIG_STRIDE / crate::config::INIT_PRIO,
+                    ftable: Vec::new(),
+
                 })
             },
         });

@@ -10,7 +10,7 @@ use crate::{
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, TaskStatus,
-    }, timer::{get_time_us},
+    }, timer::get_time_us,
 };
 
 #[repr(C)]
