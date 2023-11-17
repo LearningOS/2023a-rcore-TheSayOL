@@ -1,6 +1,8 @@
 //! Types related to task management & Functions for completely changing TCB
 
-use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle, SignalActions, SignalFlags, TaskContext};
+use super::{
+    kstack_alloc, pid_alloc, KernelStack, PidHandle, SignalActions, SignalFlags, TaskContext,
+};
 use crate::{
     config::TRAP_CONTEXT_BASE,
     fs::{File, Stdin, Stdout},
@@ -119,6 +121,10 @@ impl TaskControlBlock {
     pub fn new(elf_data: &[u8]) -> Self {
         // memory_set with elf program headers/trampoline/trap context/user stack
         let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
+
+        // get token before mem_set moved
+        let token = memory_set.token();
+
         let trap_cx_ppn = memory_set
             .translate(VirtAddr::from(TRAP_CONTEXT_BASE).into())
             .unwrap()
@@ -161,6 +167,11 @@ impl TaskControlBlock {
                 })
             },
         };
+
+        // push argc for init_proc
+        let user_sp = user_sp - core::mem::size_of::<usize>();
+        *translated_refmut(token, user_sp as *mut usize) = 0;
+
         // prepare TrapContext in user space
         let trap_cx = task_control_block.inner_exclusive_access().get_trap_cx();
         *trap_cx = TrapContext::app_init_context(
@@ -170,41 +181,50 @@ impl TaskControlBlock {
             kernel_stack_top,
             trap_handler as usize,
         );
+
+        // set x10(a0), as first para of _start() of rust.
+        trap_cx.x[10] = user_sp;
+
         task_control_block
     }
 
     /// Load a new elf to replace the original application address space and start execution
     pub fn exec(&self, elf_data: &[u8], args: Vec<String>) {
+
         // memory_set with elf program headers/trampoline/trap context/user stack
         let (memory_set, mut user_sp, entry_point) = MemorySet::from_elf(elf_data);
         let trap_cx_ppn = memory_set
             .translate(VirtAddr::from(TRAP_CONTEXT_BASE).into())
             .unwrap()
             .ppn();
-        // push arguments on user stack
-        user_sp -= (args.len() + 1) * core::mem::size_of::<usize>();
-        let argv_base = user_sp;
-        let mut argv: Vec<_> = (0..=args.len())
-            .map(|arg| {
-                translated_refmut(
-                    memory_set.token(),
-                    (argv_base + arg * core::mem::size_of::<usize>()) as *mut usize,
-                )
-            })
-            .collect();
-        *argv[args.len()] = 0;
-        for i in 0..args.len() {
-            user_sp -= args[i].len() + 1;
-            *argv[i] = user_sp;
-            let mut p = user_sp;
-            for c in args[i].as_bytes() {
-                *translated_refmut(memory_set.token(), p as *mut u8) = *c;
-                p += 1;
+        // ---------------- push arguments on user stack ----------------
+        let mut argv = Vec::new();
+        // argv must end with 0
+        argv.push(0);
+        // push args into stack
+        for i in (0..args.len()).rev() {
+            let arg = args[i].as_bytes();
+            *translated_refmut(memory_set.token(), (user_sp - 1) as *mut u8) = 0;
+            user_sp -= arg.len() + 1;
+            for c in arg {
+                *translated_refmut(memory_set.token(), user_sp as *mut u8) = *c;
             }
-            *translated_refmut(memory_set.token(), p as *mut u8) = 0;
+            // save addr of arg in argv
+            argv.push(user_sp);
         }
         // make the user_sp aligned to 8B for k210 platform
         user_sp -= user_sp % core::mem::size_of::<usize>();
+
+        // save argc  
+        argv.push(args.len());
+
+        // push (0, argv, argc) into stack
+        for v in &argv {
+            user_sp -= core::mem::size_of::<usize>();
+            *translated_refmut(memory_set.token(), user_sp as *mut usize) = *v;
+        }
+
+        // ---------------- push arguments on user stack ----------------
 
         // **** access current TCB exclusively
         let mut inner = self.inner_exclusive_access();
@@ -220,8 +240,9 @@ impl TaskControlBlock {
             self.kernel_stack.get_top(),
             trap_handler as usize,
         );
-        trap_cx.x[10] = args.len();
-        trap_cx.x[11] = argv_base;
+
+        // libc uses sp(x2) as first para of _start()
+        trap_cx.x[2] = user_sp;
         *inner.get_trap_cx() = trap_cx;
         // **** release current PCB
     }
