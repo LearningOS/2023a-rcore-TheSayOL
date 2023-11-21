@@ -192,6 +192,7 @@ impl MemorySet {
                 let end_va: VirtAddr = ((ph.virtual_addr() + ph.mem_size()) as usize).into();
                 let mut map_perm = MapPermission::U;
                 let ph_flags = ph.flags();
+                // error!("start va {:x} end va {:x}", start_va.0, end_va.0);
                 if ph_flags.is_read() {
                     map_perm |= MapPermission::R;
                 }
@@ -203,10 +204,19 @@ impl MemorySet {
                 }
                 let map_area = MapArea::new(start_va, end_va, MapType::Framed, map_perm);
                 max_end_vpn = map_area.vpn_range.get_end();
-                memory_set.push(
-                    map_area,
-                    Some(&elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize]),
-                );
+                if start_va.page_offset() == 0 {
+                    memory_set.push(
+                        map_area,
+                        Some(&elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize]),
+                    );
+                } else {
+                    let datalen = start_va.page_offset() + ph.file_size() as usize;
+                    let mut data = Vec::with_capacity(datalen);
+                    data.resize(datalen,0);
+                    data[start_va.page_offset()..].copy_from_slice(&elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize]);
+                    memory_set.push(map_area, Some(data.as_slice()));
+                }
+
             }
         }
         // map user stack with U flags

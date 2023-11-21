@@ -62,6 +62,14 @@ const SYSCALL_WAITPID: usize = 260;
 const SYSCALL_SPAWN: usize = 400;
 /// taskinfo syscall
 const SYSCALL_TASK_INFO: usize = 410;
+/// set tid addr syscall 
+const SYSCALL_SET_TID_ADDRESS: usize = 96;
+/// ioctl syscall
+const SYSCALL_IOCTL: usize = 29;
+/// writev syscall
+const SYSCALL_WRITEV: usize = 66;
+/// exit group syscall
+const SYSCALL_EXIT_GROUP: usize = 94;
 
 mod fs;
 mod process;
@@ -104,6 +112,10 @@ pub fn syscall(syscall_id: usize, args: [usize; 4]) -> isize {
         SYSCALL_SBRK => sys_sbrk(args[0] as i32),
         SYSCALL_SPAWN => sys_spawn(args[0] as *const u8),
         SYSCALL_SET_PRIORITY => sys_set_priority(args[0] as isize),
+        SYSCALL_SET_TID_ADDRESS => sys_set_tid_address(args[0] as *const i32),
+        SYSCALL_IOCTL => sys_ioctl(args[0] as u32, args[1] as u32, args[2] as *const u8),
+        SYSCALL_WRITEV => sys_writev(args[0] as usize, args[1] as usize, args[2] as usize),
+        SYSCALL_EXIT_GROUP => sys_exit_group(args[0] as i32),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
 }

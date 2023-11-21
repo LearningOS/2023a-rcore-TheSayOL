@@ -1,6 +1,8 @@
 //! File and filesystem-related syscalls
 use crate::fs::{make_pipe, open_file, OpenFlags, Stat};
-use crate::mm::{translated_byte_buffer, translated_refmut, translated_str, UserBuffer};
+use crate::mm::{
+    translated_byte_buffer, translated_ref, translated_refmut, translated_str, UserBuffer,
+};
 use crate::task::{current_task, current_user_token};
 use alloc::sync::Arc;
 
@@ -48,7 +50,7 @@ pub fn sys_read(fd: usize, buf: *const u8, len: usize) -> isize {
 }
 
 pub fn sys_open(path: *const u8, flags: u32) -> isize {
-	trace!("kernel:pid[{}] sys_open", current_task().unwrap().pid.0);
+    trace!("kernel:pid[{}] sys_open", current_task().unwrap().pid.0);
     let task = current_task().unwrap();
     let token = current_user_token();
     let path = translated_str(token, path);
@@ -63,7 +65,7 @@ pub fn sys_open(path: *const u8, flags: u32) -> isize {
 }
 
 pub fn sys_close(fd: usize) -> isize {
-	trace!("kernel:pid[{}] sys_close", current_task().unwrap().pid.0);
+    trace!("kernel:pid[{}] sys_close", current_task().unwrap().pid.0);
     let task = current_task().unwrap();
     let mut inner = task.inner_exclusive_access();
     if fd >= inner.fd_table.len() {
@@ -77,7 +79,7 @@ pub fn sys_close(fd: usize) -> isize {
 }
 
 pub fn sys_pipe(pipe: *mut usize) -> isize {
-	trace!("kernel:pid[{}] sys_pipe", current_task().unwrap().pid.0);
+    trace!("kernel:pid[{}] sys_pipe", current_task().unwrap().pid.0);
     let task = current_task().unwrap();
     let token = current_user_token();
     let mut inner = task.inner_exclusive_access();
@@ -92,7 +94,7 @@ pub fn sys_pipe(pipe: *mut usize) -> isize {
 }
 
 pub fn sys_dup(fd: usize) -> isize {
-	trace!("kernel:pid[{}] sys_dup", current_task().unwrap().pid.0);
+    trace!("kernel:pid[{}] sys_dup", current_task().unwrap().pid.0);
     let task = current_task().unwrap();
     let mut inner = task.inner_exclusive_access();
     if fd >= inner.fd_table.len() {
@@ -108,18 +110,68 @@ pub fn sys_dup(fd: usize) -> isize {
 
 /// YOUR JOB: Implement fstat.
 pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
-    trace!("kernel:pid[{}] sys_fstat NOT IMPLEMENTED", current_task().unwrap().pid.0);
+    trace!(
+        "kernel:pid[{}] sys_fstat NOT IMPLEMENTED",
+        current_task().unwrap().pid.0
+    );
     -1
 }
 
 /// YOUR JOB: Implement linkat.
 pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
-    trace!("kernel:pid[{}] sys_linkat NOT IMPLEMENTED", current_task().unwrap().pid.0);
+    trace!(
+        "kernel:pid[{}] sys_linkat NOT IMPLEMENTED",
+        current_task().unwrap().pid.0
+    );
     -1
 }
 
 /// YOUR JOB: Implement unlinkat.
 pub fn sys_unlinkat(_name: *const u8) -> isize {
-    trace!("kernel:pid[{}] sys_unlinkat NOT IMPLEMENTED", current_task().unwrap().pid.0);
+    trace!(
+        "kernel:pid[{}] sys_unlinkat NOT IMPLEMENTED",
+        current_task().unwrap().pid.0
+    );
     -1
+}
+
+
+
+pub fn sys_ioctl(fd: u32, cmd: u32, arg: *const u8) -> isize {
+    if fd != 1 {
+        error!("sys_ioctl: unknown fd {}", fd);
+        return  -1;
+    }
+    trace!("sys_ioctl: fd = {}, cmd = {}, arg = 0x{:x}", fd, cmd, arg as usize);
+    let dir = cmd >> 30;
+    let size = (cmd >> 16) & 0b1111_1111_1111_11 ;
+    let _type = ((cmd >> 8) & (0b1111_1111)) as u8 as char;
+    let nr = cmd & 0b1111_1111;
+    trace!("sys_ioctl: cmd = dir {}, size {}, type {}, nr {}", dir, size, _type, nr);
+    let s = translated_str(current_user_token(), arg);
+    trace!("sys_ioctl: arg = String -- {}", s);
+    0
+}
+
+
+
+struct Iovec {
+    base: *const u8,
+    len: usize,
+}
+
+pub fn sys_writev(fd: usize, _iov: usize, vlen: usize) -> isize {
+    trace!(
+        "syswritev: fd = {}, vec = 0x{:x}, vlen = {}",
+        fd,
+        _iov,
+        vlen
+    );
+    let mut total_len = 0;
+    for i in 0..vlen {
+        let iov = unsafe { (_iov as *const Iovec).add(i) };
+        let iov = translated_ref(current_user_token(), iov);
+        total_len += sys_write(fd, iov.base, iov.len);
+    }
+    total_len as isize
 }

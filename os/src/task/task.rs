@@ -190,14 +190,35 @@ impl TaskControlBlock {
 
     /// Load a new elf to replace the original application address space and start execution
     pub fn exec(&self, elf_data: &[u8], args: Vec<String>) {
-
         // memory_set with elf program headers/trampoline/trap context/user stack
         let (memory_set, mut user_sp, entry_point) = MemorySet::from_elf(elf_data);
         let trap_cx_ppn = memory_set
             .translate(VirtAddr::from(TRAP_CONTEXT_BASE).into())
             .unwrap()
             .ppn();
-        // ---------------- push arguments on user stack ----------------
+
+        // temp stack
+        let mut stack = Vec::new();
+        // ---------------- push auxv----------------
+        use crate::config;
+        // None
+        stack.push(0usize);
+        stack.push(0usize);
+        // page size
+        stack.push(config::PAGE_SIZE);
+        stack.push(6);
+
+        // ---------------- push envp----------------
+        // just empty
+        stack.push(0usize);
+
+        // ----------------push temp stack into user_sp----------------
+        for v in stack {
+            user_sp -= 8;
+            *translated_refmut(memory_set.token(), (user_sp) as *mut usize) = v;
+        }
+
+        // ---------------- push arguments----------------
         let mut argv = Vec::new();
         // argv must end with 0
         argv.push(0);
@@ -215,7 +236,7 @@ impl TaskControlBlock {
         // make the user_sp aligned to 8B for k210 platform
         user_sp -= user_sp % core::mem::size_of::<usize>();
 
-        // save argc  
+        // save argc
         argv.push(args.len());
 
         // push (0, argv, argc) into stack
